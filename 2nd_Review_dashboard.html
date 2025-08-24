@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>IoT Temperature & Humidity Dashboard — Original Theme</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.3.0/dist/chart.umd.min.js"></script>
+
+<style>
+  /* these are the theme variables and base styling */
+  :root{
+    --bg-dark: linear-gradient(135deg,#0f2027,#203a43,#2c5364);
+    --bg-light: linear-gradient(135deg,#e0f7fa,#ffffff,#b2ebf2);
+    --text-dark:#ffffff; --text-light:#000000;
+    --card-dark:rgba(255,255,255,.08); --card-light:rgba(0,0,0,.08);
+    --chip-dark:rgba(255,255,255,.12); --chip-light:rgba(0,0,0,.08);
+  }
+   /* this is the body & theme switching which inshort a moving gradient animated with 
+   keyframes bgshift for example .light is applied then the site flips to a light theme */
+  *{box-sizing:border-box}
+  body{
+    margin:0; padding:24px;
+    font-family:"Segoe UI",system-ui,Arial,sans-serif;
+    background: var(--bg-dark);
+    background-size: 200% 200%;
+    animation: bgshift 18s ease infinite;
+    color: var(--text-dark);
+    transition: background .6s ease, color .6s ease;
+  }
+  body.light{
+    background: var(--bg-light);
+    background-size: 200% 200%;
+    animation: bgshift 18s ease infinite;
+    color: var(--text-light);
+  }
+  @keyframes bgshift{
+    0%{background-position:0% 50%}
+    50%{background-position:100% 50%}
+    100%{background-position:0% 50%}
+  }
+  /*this is just a UI skeleton which has layouts and component*/
+  h1{margin:0 0 6px;text-align:center;font-weight:800;letter-spacing:.2px}
+  .sub{opacity:.85;text-align:center;margin-bottom:18px}
+
+  .topbar{max-width:1200px;margin:0 auto 16px;display:flex;gap:12px;justify-content:flex-end}
+  .btn{border:0;border-radius:999px;padding:9px 14px;font-weight:600;cursor:pointer;
+       transition:transform .15s ease,background .3s ease,opacity .2s ease}
+  .btn:hover{transform:translateY(-1px)}
+  .btn-primary{background:#ff9800;color:#fff}
+  .btn-primary:hover{background:#e68900}
+  .btn-ghost{background:transparent;border:1px solid rgba(255,255,255,.3);color:inherit}
+  body.light .btn-ghost{border-color:rgba(0,0,0,.25)}
+
+  .grid{max-width:1200px;margin:0 auto;display:grid;gap:20px}
+  @media (min-width:980px){ .grid{grid-template-columns:1fr 1fr} }
+
+  .card{
+    background: var(--card-dark);
+    backdrop-filter: blur(10px);
+    border-radius:16px;
+    padding:16px 16px 18px;
+    box-shadow:0 10px 28px rgba(0,0,0,.25);
+    transition: background .6s ease, transform .25s ease;
+  }
+  body.light .card{ background: var(--card-light); }
+  .card:hover{ transform: translateY(-2px) }
+
+  .card-header{
+    display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px;
+  }
+  .chips{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .chip{padding:6px 10px;border-radius:999px;font-size:12px;background:var(--chip-dark)}
+  body.light .chip{background:var(--chip-light)}
+
+  canvas{background:rgba(255,255,255,.04);border-radius:12px;padding:10px}
+  body.light canvas{background:rgba(0,0,0,.04)}
+
+  /* Forecast area */
+  .forecast-wrap{position:relative}
+  .forecast-controls{
+    position:absolute; right:14px; top:10px; display:flex; gap:8px; align-items:center;
+    background: rgba(0,0,0,.2); border:1px solid rgba(255,255,255,.25);
+    padding:6px 8px; border-radius:999px; backdrop-filter: blur(8px);
+  }
+  body.light .forecast-controls{
+    background: rgba(255,255,255,.35); border-color: rgba(0,0,0,.15);
+  }
+  .toggle{
+    display:inline-flex; background:rgba(255,255,255,.12);
+    border-radius:999px; overflow:hidden;
+  }
+  .toggle button{
+    border:0; padding:6px 10px; cursor:pointer; font-weight:600; font-size:12px; background:transparent; color:inherit;
+  }
+  .toggle button.active{
+    background: rgba(255,255,255,.25);
+  }
+  body.light .toggle{ background: rgba(0,0,0,.08) }
+  body.light .toggle button.active{ background: rgba(0,0,0,.15) }
+
+  .mini-cards{
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px; margin-top:12px;
+  }
+  .mini{
+    background: rgba(255,255,255,.06); border-radius:12px; padding:10px; text-align:center;
+    box-shadow:0 6px 18px rgba(0,0,0,.18); transition: transform .25s ease, opacity .3s ease;
+  }
+  body.light .mini{ background: rgba(0,0,0,.06) }
+  .mini h4{ margin:0 0 6px; font-size:14px; color:#ffca28 }
+  .mini .icon{ font-size:20px; line-height:1; margin-bottom:6px }
+  .mini p{ margin:2px 0; font-size:12px }
+</style>
+</head>
+<body>
+  <h1>IoT Temperature & Humidity Dashboard</h1>
+  <div class="sub" id="timestamp">—</div>
+  <div class="topbar">
+    <button class="btn btn-primary" id="themeToggle">☀ Light Mode</button>
+  </div>
+
+  <div class="grid">
+    <!-- Live Temperature -->
+    <div class="card">
+      <div class="card-header">
+        <div class="chips">
+          <div class="chip">Temperature</div>
+          <div class="chip">Live</div>
+        </div>
+      </div>
+      <canvas id="tempChart" height="130"></canvas>
+    </div>
+
+    <!-- Live Humidity -->
+    <div class="card">
+      <div class="card-header">
+        <div class="chips">
+          <div class="chip">Humidity</div>
+          <div class="chip">Live</div>
+        </div>
+      </div>
+      <canvas id="humidityChart" height="130"></canvas>
+    </div>
+
+    <!-- Current Temperature Screen -->
+    <div class="card">
+      <div class="card-header">
+        <div class="chips">
+          <div class="chip">Current</div>
+          <div class="chip">Temperature</div>
+        </div>
+      </div>
+      <h2 id="currentTemp" style="text-align:center; font-size:32px; margin:10px 0;">-- °C</h2>
+    </div>
+
+    <!-- Current Humidity Screen -->
+    <div class="card">
+      <div class="card-header">
+        <div class="chips">
+          <div class="chip">Current</div>
+          <div class="chip">Humidity</div>
+        </div>
+      </div>
+      <h2 id="currentHum" style="text-align:center; font-size:32px; margin:10px 0;">-- %</h2>
+    </div>
+
+    <!-- Forecast -->
+    <div class="card" style="grid-column:1/-1">
+      <div class="card-header">
+        <div class="chips">
+          <div class="chip">Forecast</div>
+          <div class="chip">Trend-based</div>
+          <div class="chip">Auto-refresh</div>
+        </div>
+      </div>
+
+      <div class="forecast-wrap">
+        <div class="forecast-controls">
+          <div class="toggle" id="rangeToggle">
+            <button data-range="7" class="active">7 Days</button>
+            <button data-range="15">15 Days</button>
+          </div>
+        </div>
+        <canvas id="forecastChart" height="110"></canvas>
+      </div>
+
+      <div id="miniCards" class="mini-cards"></div>
+    </div>
+  </div>
+
+<script>
+  // these are just setup constants for Config
+  const IN_TZ = 'Asia/Kolkata';
+  const API_URL = "http://172.20.10.2:5000/api/logs"; // My IoT endpoint or IoT sensor API
+  const MAX_POINTS = 120; // live buffer size or how many data points to keep (rolling window)
+  const UPDATE_MS = 4000; // refresh every 4 seconds
+
+  // This updates the "Indian Time" clock every second (CLOCK)
+  function updateClock(){
+    const now = new Date().toLocaleString('en-IN',{timeZone:IN_TZ,weekday:'long',year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true});
+    document.getElementById('timestamp').textContent = `Indian Time: ${now}`;
+  }
+  setInterval(updateClock, 1000); updateClock();
+
+  // This is the theme toggle which in other words it makes clicking buttons , switches the theme and updates the chart colors
+  let isLight = false;
+  const themeBtn = document.getElementById('themeToggle');
+  themeBtn.addEventListener('click', ()=>{
+    isLight = !isLight;
+    document.body.classList.toggle('light', isLight);
+    themeBtn.textContent = isLight ? '🌙 Dark Mode' : '☀ Light Mode';
+    syncChartTheme();
+  });
+
+  // this is a helper function which there is an inclusive of linear regression , 
+  // clamp by keeping values inside a safe range and pickIcon which picks an emoji
+  const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
+  function linearRegression(xs, ys){
+    const n = xs.length; if(n<2) return {a:0,b:ys[n-1]||0};
+    let sx=0, sy=0, sxy=0, sxx=0;
+    for(let i=0;i<n;i++){ const x=xs[i], y=ys[i]; sx+=x; sy+=y; sxy+=x*y; sxx+=x*x; }
+    const d = n*sxx - sx*sx; if (!d) return {a:0,b:ys[n-1]};
+    const a = (n*sxy - sx*sy)/d;
+    const b = (sy - a*sx)/n;
+    return {a,b};
+  }
+  function pickIcon(t, h){
+    if (h > 80) return "🌧️";
+    if (t >= 34 && h < 60) return "☀️";
+    if (t >= 30 && h >= 60) return "🌤️";
+    if (t < 22 && h > 70) return "🌦️";
+    return "⛅";
+  }
+
+  // this is the charts setup because each chart has its own dataset and other components
+  const palette = {
+    dark:{
+      text:'#fff', grid:'rgba(255,255,255,.18)',
+      temp:'#ff7043', tempFill:'rgba(255,112,67,.18)',
+      hum:'#29b6f6', humFill:'rgba(41,182,246,.18)',
+      forecast:'#66bb6a', forecastFill:'rgba(102,187,106,.2)'
+    },
+    light:{
+      text:'#000', grid:'rgba(0,0,0,.16)',
+      temp:'#e65100', tempFill:'rgba(230,81,0,.16)',
+      hum:'#0277bd', humFill:'rgba(2,119,189,.16)',
+      forecast:'#2e7d32', forecastFill:'rgba(46,125,50,.18)'
+    }
+  };
+  // it is used for chart initialization by grabbing the canvas elements also 
+  // .getcontext is required for Chart.js to draw
+  const tempCtx = document.getElementById('tempChart').getContext('2d');
+  const humidityCtx = document.getElementById('humidityChart').getContext('2d');
+  const forecastCtx = document.getElementById('forecastChart').getContext('2d');
+
+  //Temperature chart these are live charts that scroll as new data data comes in
+  const tempChart = new Chart(tempCtx,{
+    type:'line',
+    data:{ labels:[], datasets:[{
+      label:'Temperature (°C)', data:[], tension:.35, borderWidth:2, pointRadius:0,
+      borderColor: palette.dark.temp, backgroundColor: palette.dark.tempFill, fill:true
+    }]},
+    options:{
+      animation:{ duration:600, easing:'easeOutQuart' },
+      responsive:true,
+      plugins:{ legend:{ labels:{ color: palette.dark.text } } },
+      scales:{
+        x:{ ticks:{ color: palette.dark.text, maxRotation:0 }, grid:{ color: palette.dark.grid } },
+        y:{ ticks:{ color: palette.dark.text }, grid:{ color: palette.dark.grid } }
+      }
+    }
+  });
+  // Humidity chat these are live charts that scroll as new data data comes in
+  const humidityChart = new Chart(humidityCtx,{
+    type:'line',
+    data:{ labels:[], datasets:[{
+      label:'Humidity (%)', data:[], tension:.35, borderWidth:2, pointRadius:0,
+      borderColor: palette.dark.hum, backgroundColor: palette.dark.humFill, fill:true
+    }]},
+    options:{
+      animation:{ duration:600, easing:'easeOutQuart' },
+      responsive:true,
+      plugins:{ legend:{ labels:{ color: palette.dark.text } } },
+      scales:{
+        x:{ ticks:{ color: palette.dark.text, maxRotation:0 }, grid:{ color: palette.dark.grid } },
+        y:{ ticks:{ color: palette.dark.text }, grid:{ color: palette.dark.grid } }
+      }
+    }
+  });
+  
+  //Forecast chart will consist of 2 lines 1 for future temperature and 1 for 
+  // future humidity which is by the help of regression and forecast logic
+  const forecastChart = new Chart(forecastCtx,{
+    type:'line',
+    data:{ labels:[], datasets:[{
+      label:'Predicted Temp (°C)', data:[], tension:.35, borderWidth:2, pointRadius:2,
+      borderColor: palette.dark.forecast, backgroundColor: palette.dark.forecastFill, fill:true
+    },{
+      label:'Predicted Humidity (%)', data:[], tension:.35, borderWidth:2, pointRadius:2,
+      borderColor: palette.dark.hum, backgroundColor: 'transparent', fill:false
+    }]},
+    options:{
+      animation:{ duration:500 },
+      responsive:true,
+      plugins:{ legend:{ labels:{ color: palette.dark.text } } },
+      scales:{
+        x:{ ticks:{ color: palette.dark.text }, grid:{ color: palette.dark.grid } },
+        y:{ ticks:{ color: palette.dark.text }, grid:{ color: palette.dark.grid } }
+      }
+    }
+  });
+  //Theme sync - it flips all chart colors when i toggle light or dark mode
+  // it also update axes, grids, and dataset colors dynamically.
+  function syncChartTheme(){
+    const p = isLight ? palette.light : palette.dark;
+    [tempChart, humidityChart, forecastChart].forEach(ch=>{
+      ch.options.plugins.legend.labels.color = p.text;
+      ch.options.scales.x.ticks.color = p.text;
+      ch.options.scales.y.ticks.color = p.text;
+      ch.options.scales.x.grid.color = p.grid;
+      ch.options.scales.y.grid.color = p.grid;
+    });
+    tempChart.data.datasets[0].borderColor = p.temp;
+    tempChart.data.datasets[0].backgroundColor = p.tempFill;
+
+    humidityChart.data.datasets[0].borderColor = p.hum;
+    humidityChart.data.datasets[0].backgroundColor = p.humFill;
+
+    forecastChart.data.datasets[0].borderColor = p.forecast;
+    forecastChart.data.datasets[0].backgroundColor = p.forecastFill;
+    forecastChart.data.datasets[1].borderColor = p.hum;
+
+    tempChart.update(); humidityChart.update(); forecastChart.update();
+  }
+
+  // Live IoT Data - it takes new sensor readings and sorts them in order
+  async function fetchLive(){
+    try{
+      const res = await fetch(API_URL);
+      const data = await res.json();
+      data.sort((a,b)=> new Date(a.timestamp) - new Date(b.timestamp));
+    //it extract arrays of timestamps, temperatures, and humidities from server response
+      const labels = data.map(d=> d.timestamp);
+      const temps  = data.map(d=> Number(d.temperature));
+      const hums   = data.map(d=> Number(d.humidity));
+
+      // Only keep the last MAX_POINTS entries for graphing (sliding window)    
+      const start = Math.max(0, labels.length - MAX_POINTS);
+      // Convert timestamps into readable Indian time (HH:MM format)
+     const lbl = labels.slice(start).map(t =>
+  new Date(t).toLocaleTimeString('en-IN', {
+    timeZone: IN_TZ,
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+);
+
+      // Update Temperature and humidity chart with latest values
+      tempChart.data.labels = lbl;
+      tempChart.data.datasets[0].data = temps.slice(start);
+      humidityChart.data.labels = lbl;
+      humidityChart.data.datasets[0].data = hums.slice(start);
+      tempChart.update(); humidityChart.update();
+
+      // Update Current Value Displays (Big Numbers on Screen)
+      if (temps.length > 0 && hums.length > 0) {
+        const latestTemp = temps[temps.length - 1];
+        const latestHum  = hums[hums.length - 1];
+
+        const tempEl = document.getElementById("currentTemp");
+        const humEl  = document.getElementById("currentHum");
+
+        // Temperature display logic
+        tempEl.textContent = `${latestTemp.toFixed(1)} °C`;
+        if (latestTemp < 18) {
+          tempEl.style.color = "#1e88e5"; // Blue (Cold)
+        } else if (latestTemp >= 18 && latestTemp <= 30) {
+          tempEl.style.color = "#43a047"; // Green (Normal)
+        } else {
+          tempEl.style.color = "#e53935"; // Red (Hot)
+        }
+
+        // Humidity display logic
+        humEl.textContent = `${latestHum.toFixed(1)} %`;
+        if (latestHum < 30) {
+          humEl.style.color = "#f57c00"; // Orange (Dry)
+        } else if (latestHum >= 30 && latestHum <= 70) {
+          humEl.style.color = "#43a047"; // Green (Comfort)
+        } else {
+          humEl.style.color = "#1e88e5"; // Blue (Humid)
+        }
+      }
+
+      // it recomputes forecast based on the *entire* data series (not just the window)
+      computeForecast(labels, temps, hums);
+    }catch(e){
+      console.error('Fetch error:', e);
+    }
+  }
+
+  // Forecast using an open api for meteo.com (7 days is the default but 15 is the max) ====
+  async function fetchWeatherForecast() {
+    try {
+      const rajkotLat = 22.3039;
+      const rajkotLon = 70.8022;
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${rajkotLat}&longitude=${rajkotLon}&daily=temperature_2m_max&hourly=relative_humidity_2m&timezone=Asia%2FKolkata`;
+
+      const response = await fetch(url);
+      const data = await response.json();
+
+      // Extract arrays of dates and daily max temperatures
+      const dates = data.daily.time;
+      const maxTemps = data.daily.temperature_2m_max;
+      const hourlyTimes = data.hourly.time;
+      const humidityValues = data.hourly.relative_humidity_2m;
+
+      // it builds the approximate daily humidity array safely
+      const dailyHumidity = dates.map(date => {
+        const noonIndex = hourlyTimes.indexOf(`${date}T12:00`);
+        return noonIndex !== -1 ? humidityValues[noonIndex] : null;
+      });
+
+      // Return structured object which is easy to use later in rendering
+      return { dates, maxTemps, dailyHumidity };
+    } catch (err) {
+      console.error('Forecast fetch error:', err);
+      return null;
+    }
+  }
+
+  // this is the forecast range toggle which is 7 days to 15 days
+
+  let forecastRange = 7;
+  const rangeToggle = document.getElementById('rangeToggle');
+  rangeToggle.addEventListener('click', (e)=>{
+    const btn = e.target.closest('button'); if(!btn) return;
+    document.querySelectorAll('#rangeToggle button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+
+    //update range value (7 or 15 days)
+    forecastRange = Number(btn.dataset.range);
+
+    // If forecast data is already cached, redraw it
+    if (window.__lastForecast) renderForecast(window.__lastForecast);
+  });
+
+    // Compute Forecast using Linear Regression on live data
+    function computeForecast(labels, temps, hums){
+    if (labels.length < 3) return;
+    // Convert timestamps → numeric (milliseconds)
+    // Linear regression (find best-fit line for temperature & humidity)
+    const xs = labels.map(t => new Date(t).getTime());
+    const {a:at,b:bt} = linearRegression(xs, temps);
+    const {a:ah,b:bh} = linearRegression(xs, hums);
+
+    const dayMs = 24*60*60*1000; // one day in ms
+    const nowMs = Date.now();
+
+    const out = [];
+    // forecast up to 15 days ahead
+    for (let i=1; i<=15; i++){
+    const t = nowMs + i*dayMs;
+    const temp = clamp(at*t + bt, -10, 60);
+    const hum  = clamp(ah*t + bh, 0, 100);
+
+    // Predict temp & humidity using regression line
+    // Add min/max deviation bands for realism 
+    const tMin = clamp(temp - 1.6, -20, 60);
+    const tMax = clamp(temp + 1.8, -20, 60);
+    const hMin = clamp(hum - 6, 0, 100);
+    const hMax = clamp(hum + 6, 0, 100);
+
+    // Push forecast object into results
+    out.push({
+      label: new Date(t).toLocaleDateString(undefined,{weekday:'short', month:'short', day:'numeric'}),
+      t: Number(temp.toFixed(1)), h: Number(hum.toFixed(0)),
+      tMin: Number(tMin.toFixed(1)), tMax: Number(tMax.toFixed(1)),
+      hMin: Math.round(hMin), hMax: Math.round(hMax),
+      icon: pickIcon(temp, hum)
+    });
+  }
+    // Cache forecast and render immediately
+    window.__lastForecast = out;
+    renderForecast(out);
+  }
+    // Render Forecast Chart and Mini Cards
+    function renderForecast(allDays){
+    // Cut down to currently selected range (7 or 15 days)
+    const view = allDays.slice(0, forecastRange);
+    // Update forecast chart
+    forecastChart.data.labels = view.map(d=>d.label);
+    forecastChart.data.datasets[0].data = view.map(d=>d.t);
+    forecastChart.data.datasets[1].data = view.map(d=>d.h);
+    forecastChart.update();
+    // Build mini forecast cards below chart
+    const mini = document.getElementById('miniCards');
+    mini.innerHTML = '';
+
+      view.forEach((d)=>{
+      const div = document.createElement('div');
+      div.className = 'mini';
+      // Start hidden (for animation)
+      div.style.opacity = '0';
+      div.style.transform = 'translateY(6px)';
+      // Card HTML content
+      div.innerHTML = `
+        <h4>${d.label}</h4>
+        <div class="icon">${d.icon}</div>
+        <p>🌡️ <strong>${d.tMin}–${d.tMax}°C</strong></p>
+        <p>💧 <strong>${d.hMin}–${d.hMax}%</strong></p>
+      `;
+      mini.appendChild(div);
+
+      // Animate reveal (fade and slide)     
+      requestAnimationFrame(()=> {
+        div.style.transition = 'transform .3s ease, opacity .35s ease';
+        div.style.opacity = '1';
+        div.style.transform = 'translateY(0)';
+      });
+    });
+  }
+
+  // Loop which keeps on fetching live data 
+  fetchLive(); // this is the initial load
+  setInterval(fetchLive, UPDATE_MS); // it has to refresh periodically
+</script>
+</body>
+</html>

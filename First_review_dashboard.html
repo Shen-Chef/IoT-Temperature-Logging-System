@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>IoT Temperature Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #121212;
+      color: #ffffff;
+      padding: 20px;
+    }
+
+    h2, h3 {
+      text-align: center;
+      margin-bottom: 10px;
+    }
+
+    .card {
+      background: #1e1e1e;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 30px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    }
+
+    .forecast-container {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 15px;
+    }
+
+    .forecast-card {
+      background: #2a2a2a;
+      padding: 15px;
+      border-radius: 10px;
+      width: 160px;
+      text-align: center;
+      box-shadow: 2px 2px 10px rgba(0, 0, 0, 0.4);
+    }
+
+    .forecast-card h4 {
+      margin: 0 0 10px 0;
+      font-size: 16px;
+      color: #ffca28;
+    }
+
+    .forecast-card p {
+      margin: 5px 0;
+      font-size: 14px;
+    }
+
+    canvas {
+      background: #2a2a2a;
+      border-radius: 10px;
+      padding: 10px;
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <h2>Live Temperature & Humidity</h2>
+    <canvas id="tempChart"></canvas>
+  </div>
+
+  <div class="card">
+    <h3>7-Day Weather Forecast</h3>
+    <div id="forecast-container" class="forecast-container"></div>
+  </div>
+
+  <script>
+    const tempCtx = document.getElementById('tempChart').getContext('2d');
+
+    const liveChart = new Chart(tempCtx, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [
+          {
+            label: 'Temperature (°C)',
+            data: [],
+            borderColor: '#ff5722',
+            backgroundColor: 'rgba(255, 87, 34, 0.2)',
+            fill: true,
+            tension: 0.3
+          },
+          {
+            label: 'Humidity (%)',
+            data: [],
+            borderColor: '#2196f3',
+            backgroundColor: 'rgba(33, 150, 243, 0.2)',
+            fill: true,
+            tension: 0.3
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { labels: { color: 'white' } }
+        },
+        scales: {
+          x: {
+            title: { display: true, text: 'Timestamp (IST)', color: 'white' },
+            ticks: { color: 'white' }
+          },
+          y: {
+            title: { display: true, text: 'Value', color: 'white' },
+            ticks: { color: 'white' }
+          }
+        }
+      }
+    });
+
+    // Fetch IoT live temperature and humidity data
+    async function fetchLiveData() {
+      try {
+        const response = await fetch("http://172.20.10.6:5000/api/logs");
+        const data = await response.json();
+
+        const labels = data.map(entry => {
+          const utcDate = new Date(entry.timestamp);
+          return utcDate.toLocaleString('en-IN', {
+            timeZone: 'Asia/Kolkata',
+            day: '2-digit',
+            month: 'short',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true
+          });
+        });
+
+        const tempData = data.map(entry => entry.temperature);
+        const humidityData = data.map(entry => entry.humidity);
+
+        liveChart.data.labels = labels;
+        liveChart.data.datasets[0].data = tempData;
+        liveChart.data.datasets[1].data = humidityData;
+
+        liveChart.update();
+      } catch (error) {
+        console.error("Failed to fetch IoT data:", error);
+      }
+    }
+
+    // Fetch and display 7-day forecast
+    async function fetchWeatherForecast() {
+      try {
+        const rajkotLat = 22.3039;
+        const rajkotLon = 70.8022;
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${rajkotLat}&longitude=${rajkotLon}&daily=temperature_2m_max&hourly=relative_humidity_2m&timezone=Asia%2FKolkata`;
+
+        const response = await fetch(url);
+        const data = await response.json();
+
+        const dates = data.daily.time;
+        const maxTemps = data.daily.temperature_2m_max;
+        const hourlyTimes = data.hourly.time;
+        const humidityValues = data.hourly.relative_humidity_2m;
+
+        const dailyHumidity = [];
+
+        for (let date of dates) {
+          const noonIndex = hourlyTimes.indexOf(`${date}T12:00`);
+          dailyHumidity.push(noonIndex !== -1 ? humidityValues[noonIndex] : "N/A");
+        }
+
+        const container = document.getElementById("forecast-container");
+        container.innerHTML = "";
+
+        for (let i = 0; i < dates.length; i++) {
+          const dateObj = new Date(dates[i]);
+          const formattedDate = dateObj.toLocaleDateString('en-IN', {
+            weekday: 'short',
+            day: '2-digit',
+            month: 'short',
+            timeZone: 'Asia/Kolkata'
+          });
+
+          const card = document.createElement("div");
+          card.className = "forecast-card";
+          card.innerHTML = `
+            <h4>${formattedDate}</h4>
+            <p>🌡️ Max Temp: ${maxTemps[i]}°C</p>
+            <p>💧 Humidity: ${dailyHumidity[i]}%</p>
+          `;
+
+          container.appendChild(card);
+        }
+      } catch (error) {
+        console.error("Failed to fetch weather forecast:", error);
+      }
+    }
+
+    // Load data
+    fetchLiveData();
+    setInterval(fetchLiveData, 10000); // every 10 seconds
+
+    fetchWeatherForecast(); // once on load
+  </script>
+</body>
+</html>
